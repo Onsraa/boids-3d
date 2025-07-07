@@ -10,7 +10,6 @@ use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use crate::plugins::boids::BoidsPlugin;
 use crate::plugins::setup::SetupPlugin;
 use crate::plugins::spatial::SpatialPlugin;
-use bevy::color::palettes::css::RED;
 use bevy::{input::mouse::AccumulatedMouseMotion, prelude::*};
 use std::{f32::consts::FRAC_PI_2, ops::Range};
 
@@ -54,16 +53,6 @@ fn setup(mut commands: Commands) {
         Name::new("Camera"),
         Camera3d::default(),
         Transform::from_xyz(200.0, 200.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
-    ));
-
-    commands.spawn((
-        PointLight {
-            intensity: 100_000_000.0,
-            color: RED.into(),
-            shadows_enabled: true,
-            ..default()
-        },
-        Transform::from_xyz(0.0, 100.0, 0.0),
     ));
 }
 
