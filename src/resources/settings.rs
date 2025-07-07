@@ -24,8 +24,8 @@ pub struct BoidSettings {
 impl Default for BoidSettings {
     fn default() -> Self {
         BoidSettings {
-            count: 2000,
-            previous_count: 2000,
+            count: 100,
+            previous_count: 100,
             size: 0.08,
             cohesion_range: 50.0,
             alignment_range: 30.0,

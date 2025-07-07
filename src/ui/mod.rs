@@ -1,0 +1,67 @@
+use crate::resources::settings::BoidSettings;
+use bevy::prelude::*;
+use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass, egui};
+
+pub struct UiPlugin;
+
+impl Plugin for UiPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_plugins(EguiPlugin::default())
+            .add_systems(EguiPrimaryContextPass, ui_system);
+    }
+}
+
+fn ui_system(mut contexts: EguiContexts, mut boid_settings: ResMut<BoidSettings>) -> Result {
+    
+    egui::Window::new("Paramètres Boids").show(contexts.ctx_mut()?, |ui| {
+        ui.heading("Forces");
+
+        ui.add(egui::Slider::new(&mut boid_settings.cohesion_coeff, 0.0..=50.0).text("Cohésion"));
+
+        ui.add(
+            egui::Slider::new(&mut boid_settings.alignment_coeff, 0.0..=20.0).text("Alignement"),
+        );
+
+        ui.add(
+            egui::Slider::new(&mut boid_settings.separation_coeff, 0.0..=50.0).text("Séparation"),
+        );
+
+        ui.add(
+            egui::Slider::new(&mut boid_settings.collision_coeff, 0.0..=100.0)
+                .text("Évitement obstacles"),
+        );
+
+        ui.separator();
+        ui.heading("Distances");
+
+        ui.add(
+            egui::Slider::new(&mut boid_settings.cohesion_range, 10.0..=100.0)
+                .text("Portée cohésion"),
+        );
+
+        ui.add(
+            egui::Slider::new(&mut boid_settings.alignment_range, 10.0..=80.0)
+                .text("Portée alignement"),
+        );
+
+        ui.add(
+            egui::Slider::new(&mut boid_settings.separation_range, 5.0..=50.0)
+                .text("Portée séparation"),
+        );
+
+        ui.separator();
+        ui.heading("Vitesse");
+
+        ui.add(egui::Slider::new(&mut boid_settings.min_speed, 10.0..=100.0).text("Vitesse min"));
+
+        ui.add(egui::Slider::new(&mut boid_settings.max_speed, 50.0..=500.0).text("Vitesse max"));
+
+        ui.separator();
+
+        ui.add(
+            egui::Slider::new(&mut boid_settings.field_of_view, 45.0..=180.0)
+                .text("Champ de vision (°)"),
+        );
+    });
+    Ok(())
+}

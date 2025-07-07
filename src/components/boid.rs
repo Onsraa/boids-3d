@@ -12,11 +12,10 @@ pub struct Velocity {
 
 #[derive(Component)]
 pub struct Acceleration {
-    pub acceleration: Vec3
+    pub acceleration: Vec3,
 }
 
 #[derive(Component)]
-pub struct Obstacle;
-
-#[derive(Component)]
-pub struct Mode3DMarker;
+pub struct Obstacle {
+    pub radius: f32,
+}

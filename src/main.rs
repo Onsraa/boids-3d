@@ -3,6 +3,8 @@ mod globals;
 mod plugins;
 mod resources;
 mod systems;
+mod events;
+mod ui;
 
 use crate::plugins::boids::BoidsPlugin;
 use crate::plugins::setup::SetupPlugin;

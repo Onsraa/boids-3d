@@ -1,4 +1,4 @@
-pub const BOUNDS_SIZE: f32 = 350.0;
+pub const BOUNDS_SIZE: f32 = 30.0;
 
 pub const WIDTH: f32 = 100.0; // X
 pub const HEIGHT: f32 = 80.0; // Y
