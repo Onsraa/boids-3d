@@ -1,92 +1,126 @@
 use bevy::prelude::*;
+use bevy_spatial::SpatialAccess;
+use std::sync::Mutex;
 use crate::components::boid::{Boid, Velocity, Acceleration, Obstacle};
-use crate::resources::settings::BoidSettings;
+use crate::components::spatial::NNTree3D;
+use crate::resources::settings::{BoidSettings, GroupsTargets};
 use crate::events::ApplyForceEvent;
 use crate::globals::{WIDTH, HEIGHT, DEPTH, MIN_HEIGHT};
 
 pub fn flocking_system(
     boid_query: Query<(Entity, &Transform, &Velocity, &Boid), With<Boid>>,
-    mut event_writer: EventWriter<ApplyForceEvent>,
+    event_writer: EventWriter<ApplyForceEvent>,
     boid_settings: Res<BoidSettings>,
+    groups_targets: Res<GroupsTargets>,
+    kd_tree: Res<NNTree3D>,
 ) {
-    let boids: Vec<_> = boid_query.iter().collect();
+    let event_writer = Mutex::new(event_writer);
 
-    for (entity, transform, velocity, boid) in &boids {
+    boid_query.par_iter().for_each(|(entity, transform, velocity, boid)| {
         let position = transform.translation;
-        let mut cohesion_sum = Vec3::ZERO;
-        let mut cohesion_count = 0;
-        let mut alignment_sum = Vec3::ZERO;
-        let mut alignment_count = 0;
-        let mut separation_sum = Vec3::ZERO;
+        let mut cohesion_neighbors: Vec<Vec3> = Vec::new();
+        let mut repulsion_neighbors: Vec<(Vec3, f32)> = Vec::new();
+        let mut alignment_neighbors: Vec<Vec3> = Vec::new();
 
-        // Parcourir tous les autres boids
-        for (other_entity, other_transform, other_velocity, other_boid) in &boids {
-            if entity == other_entity {
-                continue;
-            }
+        // Utiliser le KD-Tree pour trouver les voisins
+        for (_, neighbor_entity) in kd_tree.within_distance(position, boid_settings.cohesion_range) {
+            if let Some(neighbor_entity) = neighbor_entity {
+                if neighbor_entity == entity { continue; }
 
-            let other_position = other_transform.translation;
-            let distance = position.distance(other_position);
+                if let Ok((_, neighbor_transform, neighbor_velocity, _)) = boid_query.get(neighbor_entity) {
+                    let neighbor_pos = neighbor_transform.translation;
 
-            // Vérifier si dans le champ de vision
-            if !is_in_field_of_view(&position, &velocity.velocity, &other_position, boid_settings.field_of_view) {
-                continue;
-            }
-
-            // Séparation (éviter les collisions)
-            if distance < boid_settings.separation_range && distance > 0.0 {
-                let diff = (position - other_position) / distance;
-                separation_sum += diff;
-            }
-
-            // Alignement (suivre la même direction)
-            if distance < boid_settings.alignment_range {
-                alignment_sum += other_velocity.velocity;
-                alignment_count += 1;
-            }
-
-            // Cohésion (rester groupé)
-            if distance < boid_settings.cohesion_range {
-                cohesion_sum += other_position;
-                cohesion_count += 1;
+                    if let Some(distance) = is_in_field_of_view(&position, &velocity.velocity, &neighbor_pos, &boid_settings.field_of_view) {
+                        if distance < boid_settings.separation_range {
+                            repulsion_neighbors.push((neighbor_pos, distance));
+                        } else if distance < boid_settings.alignment_range {
+                            alignment_neighbors.push(neighbor_velocity.velocity);
+                        } else if distance < boid_settings.cohesion_range {
+                            cohesion_neighbors.push(neighbor_pos);
+                        }
+                    }
+                }
             }
         }
 
         // Calculer les forces
-        let mut total_force = Vec3::ZERO;
+        let cohesion_force = cohesion(&position, &cohesion_neighbors, &boid_settings.cohesion_coeff);
+        let separation_force = separation(&position, &repulsion_neighbors, &boid_settings.separation_coeff);
+        let alignment_force = alignment(&velocity.velocity, &alignment_neighbors, &boid_settings.alignment_coeff);
 
-        // Force de cohésion
-        if cohesion_count > 0 {
-            let center = cohesion_sum / cohesion_count as f32;
-            let cohesion_force = (center - position) * boid_settings.cohesion_coeff;
-            total_force += cohesion_force;
-        }
+        // Attraction vers la cible du groupe
+        let target = groups_targets.targets[boid.group as usize];
+        let attraction_force = attraction_to_target(&position, &target, &boid_settings.attraction_coeff);
 
-        // Force d'alignement
-        if alignment_count > 0 {
-            let avg_velocity = alignment_sum / alignment_count as f32;
-            let alignment_force = (avg_velocity - velocity.velocity) * boid_settings.alignment_coeff;
-            total_force += alignment_force;
-        }
+        let total_force = cohesion_force + separation_force + alignment_force + attraction_force;
 
-        // Force de séparation
-        total_force += separation_sum * boid_settings.separation_coeff;
-
-        // Envoyer l'événement pour appliquer la force
+        let mut event_writer = event_writer.lock().unwrap();
         event_writer.write(ApplyForceEvent {
-            entity: *entity,
-            force: total_force,
+            entity,
+            force: total_force
         });
+    });
+}
+
+fn cohesion(position: &Vec3, cohesion_neighbors: &Vec<Vec3>, cohesion_coeff: &f32) -> Vec3 {
+    if cohesion_neighbors.is_empty() {
+        return Vec3::ZERO;
+    }
+
+    let center: Vec3 = cohesion_neighbors.iter().sum::<Vec3>() / cohesion_neighbors.len() as f32;
+    (center - *position) * *cohesion_coeff
+}
+
+fn separation(position: &Vec3, repulsion_neighbors: &Vec<(Vec3, f32)>, separation_coeff: &f32) -> Vec3 {
+    let mut separation_force = Vec3::ZERO;
+
+    for (other_pos, distance) in repulsion_neighbors {
+        if *distance > 0.0 {
+            separation_force += (*position - *other_pos) / *distance;
+        }
+    }
+
+    separation_force * *separation_coeff
+}
+
+fn alignment(velocity: &Vec3, alignment_neighbors: &Vec<Vec3>, alignment_coeff: &f32) -> Vec3 {
+    if alignment_neighbors.is_empty() {
+        return Vec3::ZERO;
+    }
+
+    let avg_velocity: Vec3 = alignment_neighbors.iter().sum::<Vec3>() / alignment_neighbors.len() as f32;
+    (avg_velocity - *velocity) * *alignment_coeff
+}
+
+fn attraction_to_target(position: &Vec3, target: &Vec3, attraction_coeff: &f32) -> Vec3 {
+    (*target - *position) * *attraction_coeff
+}
+
+fn is_in_field_of_view(position: &Vec3, velocity: &Vec3, other_pos: &Vec3, fov_degrees: &f32) -> Option<f32> {
+    let to_other = *other_pos - *position;
+    let distance = to_other.length();
+
+    if distance <= 0.0 || velocity.length_squared() == 0.0 {
+        return Some(distance);
+    }
+
+    let cos_fov = (fov_degrees / 2.0).to_radians().cos();
+    let dot = velocity.normalize().dot(to_other.normalize());
+
+    if dot >= cos_fov {
+        Some(distance)
+    } else {
+        None
     }
 }
 
 pub fn avoid_obstacles(
-    boid_query: Query<(Entity, &Transform, &mut Velocity), With<Boid>>,
+    boid_query: Query<(Entity, &Transform), With<Boid>>,
     obstacle_query: Query<(&Transform, &Obstacle), Without<Boid>>,
     mut event_writer: EventWriter<ApplyForceEvent>,
     boid_settings: Res<BoidSettings>,
 ) {
-    for (entity, transform, velocity) in boid_query.iter() {
+    for (entity, transform) in boid_query.iter() {
         let position = transform.translation;
         let mut avoidance_force = Vec3::ZERO;
 
@@ -106,7 +140,7 @@ pub fn avoid_obstacles(
             }
         }
 
-        event_writer.send(ApplyForceEvent {
+        event_writer.write(ApplyForceEvent {
             entity,
             force: avoidance_force,
         });
@@ -148,9 +182,8 @@ pub fn update_boids(
 
         // Orienter le boid dans la direction du mouvement
         if velocity.velocity.length_squared() > 0.0 {
-            let forward = velocity.velocity.normalize();
-            // Utiliser look_to pour orienter le modèle correctement
-            transform.look_to(forward, Vec3::Y);
+            let forward = -velocity.velocity.normalize();
+            transform.rotation = Quat::from_rotation_arc(Vec3::Z, forward);
         }
 
         // Réinitialiser l'accélération
@@ -163,43 +196,32 @@ pub fn confine_boids(
     boid_settings: Res<BoidSettings>,
 ) {
     let margin = 10.0;
-    let turn_factor = 1.0;
+    let turn_factor = 10.0;
 
-    for (mut transform, mut velocity) in query.iter_mut() {
-        let pos = &mut transform.translation;
+    for (transform, mut velocity) in query.iter_mut() {
+        let pos = transform.translation;
 
-        // Confinement horizontal
-        if pos.x < -WIDTH / 2.0 + margin {
-            velocity.velocity.x += turn_factor;
-        } else if pos.x > WIDTH / 2.0 - margin {
-            velocity.velocity.x -= turn_factor;
-        }
+        if boid_settings.bounce_against_walls {
+            // Confinement horizontal
+            if pos.x < -WIDTH / 2.0 + margin {
+                velocity.velocity.x += turn_factor;
+            } else if pos.x > WIDTH / 2.0 - margin {
+                velocity.velocity.x -= turn_factor;
+            }
 
-        // Confinement vertical
-        if pos.y < MIN_HEIGHT + margin {
-            velocity.velocity.y += turn_factor;
-        } else if pos.y > HEIGHT - margin {
-            velocity.velocity.y -= turn_factor;
-        }
+            // Confinement vertical
+            if pos.y < MIN_HEIGHT + margin {
+                velocity.velocity.y += turn_factor;
+            } else if pos.y > HEIGHT - margin {
+                velocity.velocity.y -= turn_factor;
+            }
 
-        // Confinement en profondeur
-        if pos.z < -DEPTH / 2.0 + margin {
-            velocity.velocity.z += turn_factor;
-        } else if pos.z > DEPTH / 2.0 - margin {
-            velocity.velocity.z -= turn_factor;
+            // Confinement en profondeur
+            if pos.z < -DEPTH / 2.0 + margin {
+                velocity.velocity.z += turn_factor;
+            } else if pos.z > DEPTH / 2.0 - margin {
+                velocity.velocity.z -= turn_factor;
+            }
         }
     }
-}
-
-fn is_in_field_of_view(position: &Vec3, velocity: &Vec3, other_pos: &Vec3, fov_degrees: f32) -> bool {
-    let to_other = *other_pos - *position;
-
-    if velocity.length_squared() == 0.0 || to_other.length_squared() == 0.0 {
-        return true; // Si pas de mouvement, voir tout
-    }
-
-    let cos_fov = (fov_degrees / 2.0).to_radians().cos();
-    let dot = velocity.normalize().dot(to_other.normalize());
-
-    dot >= cos_fov
 }

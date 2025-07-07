@@ -1,4 +1,6 @@
 use crate::resources::settings::BoidSettings;
+use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
+
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass, egui};
 
@@ -11,8 +13,11 @@ impl Plugin for UiPlugin {
     }
 }
 
-fn ui_system(mut contexts: EguiContexts, mut boid_settings: ResMut<BoidSettings>) -> Result {
-    
+fn ui_system(
+    mut contexts: EguiContexts,
+    mut boid_settings: ResMut<BoidSettings>,
+    diagnostics: Res<DiagnosticsStore>,
+) -> Result {
     egui::Window::new("Paramètres Boids").show(contexts.ctx_mut()?, |ui| {
         ui.heading("Forces");
 
@@ -29,6 +34,11 @@ fn ui_system(mut contexts: EguiContexts, mut boid_settings: ResMut<BoidSettings>
         ui.add(
             egui::Slider::new(&mut boid_settings.collision_coeff, 0.0..=100.0)
                 .text("Évitement obstacles"),
+        );
+
+        ui.add(
+            egui::Slider::new(&mut boid_settings.attraction_coeff, 0.0..=10.0)
+                .text("Attraction cible"),
         );
 
         ui.separator();
@@ -57,11 +67,28 @@ fn ui_system(mut contexts: EguiContexts, mut boid_settings: ResMut<BoidSettings>
         ui.add(egui::Slider::new(&mut boid_settings.max_speed, 50.0..=500.0).text("Vitesse max"));
 
         ui.separator();
+        ui.heading("Autres paramètres");
 
         ui.add(
             egui::Slider::new(&mut boid_settings.field_of_view, 45.0..=180.0)
                 .text("Champ de vision (°)"),
         );
+
+        ui.checkbox(
+            &mut boid_settings.bounce_against_walls,
+            "Rebondir sur les murs",
+        );
+
+        ui.separator();
+
+        ui.add(egui::Slider::new(&mut boid_settings.count, 1..=1000).text("Nombre de boids"));
+
+        if let Some(value) = diagnostics
+            .get(&FrameTimeDiagnosticsPlugin::FPS)
+            .and_then(|fps| fps.smoothed())
+        {
+            ui.label(format!("FPS: {:.1}", value));
+        }
     });
     Ok(())
 }

@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use crate::globals::BOUNDS_SIZE;
+use crate::globals::{WIDTH, HEIGHT};
 
 #[derive(Resource)]
 pub struct BoidSettings {
@@ -24,8 +24,8 @@ pub struct BoidSettings {
 impl Default for BoidSettings {
     fn default() -> Self {
         BoidSettings {
-            count: 100,
-            previous_count: 100,
+            count: 1000,
+            previous_count: 200,
             size: 0.08,
             cohesion_range: 50.0,
             alignment_range: 30.0,
@@ -35,8 +35,8 @@ impl Default for BoidSettings {
             alignment_coeff: 5.0,
             separation_coeff: 20.0,
             collision_coeff: 24.0,
-            min_speed: 50.0,
-            max_speed: 300.0,
+            min_speed: 20.0,
+            max_speed: 80.0,
             bounce_against_walls: true,
             attraction_coeff: 1.0,
             field_of_view: 90.0
@@ -51,11 +51,10 @@ pub struct GroupsTargets {
 
 impl Default for GroupsTargets {
     fn default() -> Self {
-        let radius = BOUNDS_SIZE * 0.3;
         GroupsTargets {
             targets: vec![
-                Vec3::new(-radius, 0.0, 0.0),
-                Vec3::new(radius, 0.0, 0.0),
+                Vec3::new(-WIDTH * 0.3, HEIGHT * 0.5, 0.0),
+                Vec3::new(WIDTH * 0.3, HEIGHT * 0.5, 0.0),
             ]
         }
     }

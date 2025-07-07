@@ -1,13 +1,16 @@
 mod components;
+mod events;
 mod globals;
 mod plugins;
 mod resources;
 mod systems;
-mod events;
 mod ui;
+use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 
 use crate::plugins::boids::BoidsPlugin;
 use crate::plugins::setup::SetupPlugin;
+use crate::plugins::spatial::SpatialPlugin;
+use bevy::color::palettes::css::RED;
 use bevy::{input::mouse::AccumulatedMouseMotion, prelude::*};
 use std::{f32::consts::FRAC_PI_2, ops::Range};
 
@@ -16,6 +19,8 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .add_plugins(SetupPlugin)
         .add_plugins(BoidsPlugin)
+        .add_plugins(SpatialPlugin)
+        .add_plugins(FrameTimeDiagnosticsPlugin::default())
         .add_systems(Startup, setup)
         .add_systems(Update, orbit)
         .init_resource::<CameraSettings>()
@@ -52,9 +57,13 @@ fn setup(mut commands: Commands) {
     ));
 
     commands.spawn((
-        Name::new("Light"),
-        PointLight::default(),
-        Transform::from_xyz(300.0, 50.0, 5.0),
+        PointLight {
+            intensity: 100_000_000.0,
+            color: RED.into(),
+            shadows_enabled: true,
+            ..default()
+        },
+        Transform::from_xyz(0.0, 100.0, 0.0),
     ));
 }
 

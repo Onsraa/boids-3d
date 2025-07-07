@@ -4,6 +4,7 @@ use crate::resources::settings::BoidSettings;
 use bevy::prelude::*;
 use rand::Rng;
 use std::f32::consts::PI;
+use crate::components::spatial::TrackedByKDTree3D;
 
 fn spawn_boid_entity(
     commands: &mut Commands,
@@ -32,6 +33,7 @@ fn spawn_boid_entity(
         Boid { group },
         Velocity { velocity: initial_velocity },
         Acceleration { acceleration: Vec3::ZERO },
+        TrackedByKDTree3D,
         SceneRoot(asset_server.load(GltfAssetLabel::Scene(0).from_asset("models/bird.gltf"))),
         Transform {
             translation: random_pos,
